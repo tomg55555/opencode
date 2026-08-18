@@ -1,6 +1,7 @@
+import { AppDeepLink } from "../../shared/ipc-rpc"
 import { app, BrowserWindow } from "electron"
 import type { Event } from "electron"
-import { Ipc, sendIpcEvent } from "../../shared/ipc-contract"
+import { sendIpcEvent } from "../ipc-events"
 import { writeLog, type DesktopLogger } from "../native/logging"
 import { safeWebContentsURL } from "../windows/state"
 import { getLastFocusedWindow, restoreMainWindows, setAppQuitting, setRelaunchHandler } from "../windows"
@@ -12,7 +13,7 @@ export function createApplicationLifecycle(logger: DesktopLogger) {
     if (!urls.length) return
     pendingDeepLinks.push(...urls)
     const win = getLastFocusedWindow()
-    if (win) sendIpcEvent(win.webContents, Ipc.app.deepLink, urls)
+    if (win) sendIpcEvent(win.webContents, AppDeepLink._tag, urls)
   }
   const relaunch = () => {
     setAppQuitting()

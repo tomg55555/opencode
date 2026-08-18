@@ -1,3 +1,4 @@
+import { MenuCommand } from "../../shared/ipc-rpc"
 import { BrowserWindow, Menu } from "electron"
 import type { MenuItemConstructorOptions } from "electron"
 import {
@@ -6,7 +7,7 @@ import {
   type DesktopMenuEntry,
   type DesktopMenuRole,
 } from "@opencode-ai/app/desktop-menu"
-import { Ipc, sendIpcEvent } from "../../shared/ipc-contract"
+import { sendIpcEvent } from "../ipc-events"
 
 import { UPDATER_ENABLED } from "../constants"
 import { openExternalURL } from "../files"
@@ -36,7 +37,7 @@ export function createMenu(deps: Deps) {
 }
 
 export function sendMenuCommand(win: BrowserWindow, id: string) {
-  sendIpcEvent(win.webContents, Ipc.menu.command, id)
+  sendIpcEvent(win.webContents, MenuCommand._tag, id)
 }
 
 function nativeItem(entry: DesktopMenuEntry, deps: Deps): MenuItemConstructorOptions {

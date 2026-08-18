@@ -1,9 +1,11 @@
+import { WindowFullscreenChanged, WindowPinchZoomEnabledChanged, WindowZoomFactorChanged } from "../../shared/ipc-rpc"
 import { resolveThemeVariant } from "@opencode-ai/ui/theme/resolve"
 import type { DesktopTheme } from "@opencode-ai/ui/theme/types"
 import oc2ThemeJson from "../../../../ui/src/theme/themes/oc-2.json"
 import { app, BrowserWindow, nativeImage, nativeTheme } from "electron"
 import { join } from "node:path"
-import { Ipc, sendIpcEvent, type TitlebarTheme } from "../../shared/ipc-contract"
+import { type TitlebarTheme } from "../../shared/ipc-contract"
+import { sendIpcEvent } from "../ipc-events"
 import { developmentResourcesRoot, preloadPath } from "../paths"
 import { PINCH_ZOOM_ENABLED_KEY } from "../storage/keys"
 import { getStore } from "../storage/store"
@@ -82,7 +84,7 @@ export function setPinchZoomEnabled(enabled: boolean) {
   getStore().set(PINCH_ZOOM_ENABLED_KEY, enabled)
   BrowserWindow.getAllWindows().forEach((win) => {
     pinchZoomEnabled.set(win, enabled)
-    sendIpcEvent(win.webContents, Ipc.window.pinchZoomEnabledChanged, enabled)
+    sendIpcEvent(win.webContents, WindowPinchZoomEnabledChanged._tag, enabled)
     if (!enabled && win.webContents.getZoomFactor() !== 1) win.webContents.setZoomFactor(1)
     updateZoom(win)
   })
@@ -111,7 +113,7 @@ export function wireZoom(win: BrowserWindow) {
 export function wireFullscreen(win: BrowserWindow) {
   const send = (fullscreen: boolean) => {
     if (win.isDestroyed() || win.webContents.isDestroyed()) return
-    sendIpcEvent(win.webContents, Ipc.window.fullscreenChanged, fullscreen)
+    sendIpcEvent(win.webContents, WindowFullscreenChanged._tag, fullscreen)
   }
   win.on("enter-full-screen", () => send(true))
   win.on("leave-full-screen", () => send(false))
@@ -144,5 +146,5 @@ function clampZoom(value: number) {
 
 function updateZoom(win: BrowserWindow) {
   updateTitlebar(win)
-  sendIpcEvent(win.webContents, Ipc.window.zoomFactorChanged, win.webContents.getZoomFactor())
+  sendIpcEvent(win.webContents, WindowZoomFactorChanged._tag, win.webContents.getZoomFactor())
 }

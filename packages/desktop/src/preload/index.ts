@@ -1,30 +1,79 @@
-import { contextBridge, ipcRenderer, webUtils } from "electron"
-import type { IpcRendererEvent } from "electron"
+import {
+  AppAwaitInitialization,
+  AppCheckAppExists,
+  AppConsumeInitialDeepLinks,
+  AppDeepLink,
+  AppExportDebugLogs,
+  AppFinishFirstLaunchOnboarding,
+  AppGetDefaultServerUrl,
+  AppIsFirstLaunchOnboardingPending,
+  AppRecordFatalRendererError,
+  AppRelaunch,
+  AppResolveAppPath,
+  AppSetBackgroundColor,
+  AppSetDefaultServerUrl,
+  AppSetForceFocus,
+  AppSetNativeTranslations,
+  DraftsDelete,
+  DraftsGet,
+  DraftsGetBlob,
+  DraftsPutBlob,
+  DraftsSet,
+  FilesOpenDirectoryPicker,
+  FilesOpenExternal,
+  FilesOpenFilePicker,
+  FilesOpenLocalFile,
+  FilesOpenPath,
+  FilesReadClipboardImage,
+  FilesReadPickedFile,
+  FilesReleasePickedFiles,
+  FilesRevealPath,
+  FilesSaveFilePicker,
+  MenuCommand,
+  MenuRunAction,
+  StorageClear,
+  StorageDelete,
+  StorageGet,
+  StorageKeys,
+  StorageLength,
+  StorageSet,
+  UpdaterCheck,
+  UpdaterInstall,
+  UpdaterStateChanges,
+  UpdaterSubscribe,
+  UpdaterUnsubscribe,
+  WindowFullscreenChanged,
+  WindowGetFocused,
+  WindowGetFullscreen,
+  WindowGetId,
+  WindowGetPinchZoomEnabled,
+  WindowGetZoomFactor,
+  WindowPinchZoomEnabledChanged,
+  WindowSetFocus,
+  WindowSetPinchZoomEnabled,
+  WindowSetTitlebar,
+  WindowSetZoomFactor,
+  WindowShow,
+  WindowZoomFactorChanged,
+  WslAddServer,
+  WslEvent,
+  WslGetState,
+  WslInstallDistro,
+  WslInstallOpencode,
+  WslInstallWsl,
+  WslOpenTerminal,
+  WslProbeAddable,
+  WslProbeRuntime,
+  WslRefreshDistros,
+  WslRemoveServer,
+  WslStartServer,
+  WslSubscribe,
+  WslUnsubscribe,
+} from "../shared/ipc-rpc"
+import { contextBridge, webUtils } from "electron"
 import type { ElectronAPI } from "./types"
 import type { UpdaterState } from "@opencode-ai/app/updater"
-import {
-  Ipc,
-  type IpcEvent,
-  type IpcEventListener,
-  type IpcInvoke,
-  type IpcInvokeArgs,
-  type IpcInvokeResult,
-  type IpcSend,
-} from "../shared/ipc-contract"
-
-function invoke<Channel extends keyof IpcInvoke>(channel: Channel, ...args: IpcInvokeArgs<Channel>) {
-  return ipcRenderer.invoke(channel, ...args) as Promise<IpcInvokeResult<Channel>>
-}
-
-function send<Channel extends keyof IpcSend>(channel: Channel, ...args: IpcSend[Channel]) {
-  ipcRenderer.send(channel, ...args)
-}
-
-function listen<Channel extends keyof IpcEvent>(channel: Channel, listener: IpcEventListener<Channel>) {
-  const handler = (_event: IpcRendererEvent, ...args: IpcEvent[Channel]) => listener(...args)
-  ipcRenderer.on(channel, handler)
-  return () => ipcRenderer.removeListener(channel, handler)
-}
+import { invoke, listen, send } from "./ipc-client"
 
 const updaterCallbacks = new Set<(state: UpdaterState) => void>()
 let updaterState: UpdaterState | undefined
@@ -36,35 +85,35 @@ const updaterHandler = (state: UpdaterState) => {
 }
 
 const api: ElectronAPI = {
-  awaitInitialization: () => invoke(Ipc.app.awaitInitialization),
+  awaitInitialization: () => invoke(AppAwaitInitialization._tag),
   wslServers: {
-    getState: () => invoke(Ipc.wsl.getState),
+    getState: () => invoke(WslGetState._tag),
     subscribe: (cb) => {
-      const dispose = listen(Ipc.wsl.event, cb)
-      void invoke(Ipc.wsl.subscribe)
+      const dispose = listen(WslEvent._tag, cb)
+      void invoke(WslSubscribe._tag)
       return () => {
         dispose()
-        void invoke(Ipc.wsl.unsubscribe)
+        void invoke(WslUnsubscribe._tag)
       }
     },
-    probeRuntime: () => invoke(Ipc.wsl.probeRuntime),
-    refreshDistros: () => invoke(Ipc.wsl.refreshDistros),
-    installWsl: () => invoke(Ipc.wsl.installWsl),
-    installDistro: (name) => invoke(Ipc.wsl.installDistro, name),
-    probeAddable: (distros) => invoke(Ipc.wsl.probeAddable, distros),
-    installOpencode: (name) => invoke(Ipc.wsl.installOpencode, name),
-    openTerminal: (name) => invoke(Ipc.wsl.openTerminal, name),
-    addServer: (distro) => invoke(Ipc.wsl.addServer, distro),
-    removeServer: (id) => invoke(Ipc.wsl.removeServer, id),
-    startServer: (id) => invoke(Ipc.wsl.startServer, id),
+    probeRuntime: () => invoke(WslProbeRuntime._tag),
+    refreshDistros: () => invoke(WslRefreshDistros._tag),
+    installWsl: () => invoke(WslInstallWsl._tag),
+    installDistro: (name) => invoke(WslInstallDistro._tag, name),
+    probeAddable: (distros) => invoke(WslProbeAddable._tag, distros),
+    installOpencode: (name) => invoke(WslInstallOpencode._tag, name),
+    openTerminal: (name) => invoke(WslOpenTerminal._tag, name),
+    addServer: (distro) => invoke(WslAddServer._tag, distro),
+    removeServer: (id) => invoke(WslRemoveServer._tag, id),
+    startServer: (id) => invoke(WslStartServer._tag, id),
   },
   updater: {
     subscribe: async (cb) => {
       updaterCallbacks.add(cb)
       if (updaterState) cb(updaterState)
       if (!updaterSubscription) {
-        updaterListener = listen(Ipc.updater.state, updaterHandler)
-        updaterSubscription = invoke(Ipc.updater.subscribe)
+        updaterListener = listen(UpdaterStateChanges._tag, updaterHandler)
+        updaterSubscription = invoke(UpdaterSubscribe._tag)
       }
       await updaterSubscription
       return () => {
@@ -73,66 +122,66 @@ const api: ElectronAPI = {
         updaterListener?.()
         updaterListener = undefined
         updaterSubscription = undefined
-        void invoke(Ipc.updater.unsubscribe)
+        void invoke(UpdaterUnsubscribe._tag)
       }
     },
-    check: () => invoke(Ipc.updater.check),
-    install: () => invoke(Ipc.updater.install),
+    check: () => invoke(UpdaterCheck._tag),
+    install: () => invoke(UpdaterInstall._tag),
   },
-  consumeInitialDeepLinks: () => invoke(Ipc.app.consumeInitialDeepLinks),
-  getDefaultServerUrl: () => invoke(Ipc.app.getDefaultServerUrl),
-  setDefaultServerUrl: (url) => invoke(Ipc.app.setDefaultServerUrl, url),
-  isFirstLaunchOnboardingPending: () => invoke(Ipc.app.isFirstLaunchOnboardingPending),
+  consumeInitialDeepLinks: () => invoke(AppConsumeInitialDeepLinks._tag),
+  getDefaultServerUrl: () => invoke(AppGetDefaultServerUrl._tag),
+  setDefaultServerUrl: (url) => invoke(AppSetDefaultServerUrl._tag, url),
+  isFirstLaunchOnboardingPending: () => invoke(AppIsFirstLaunchOnboardingPending._tag),
   finishFirstLaunchOnboarding: (createDefaultProject) =>
-    invoke(Ipc.app.finishFirstLaunchOnboarding, createDefaultProject),
-  checkAppExists: (appName) => invoke(Ipc.app.checkAppExists, appName),
-  resolveAppPath: (appName) => invoke(Ipc.app.resolveAppPath, appName),
-  storeGet: (name, key) => invoke(Ipc.storage.get, name, key),
-  storeSet: (name, key, value) => invoke(Ipc.storage.set, name, key, value),
-  storeDelete: (name, key) => invoke(Ipc.storage.delete, name, key),
-  storeClear: (name) => invoke(Ipc.storage.clear, name),
-  storeKeys: (name) => invoke(Ipc.storage.keys, name),
-  storeLength: (name) => invoke(Ipc.storage.length, name),
-  draftGet: (key) => invoke(Ipc.drafts.get, key),
-  draftSet: (key, value) => invoke(Ipc.drafts.set, key, value),
-  draftDelete: (key) => invoke(Ipc.drafts.delete, key),
-  draftBlobPut: (data) => invoke(Ipc.drafts.putBlob, data),
-  draftBlobGet: (id) => invoke(Ipc.drafts.getBlob, id),
+    invoke(AppFinishFirstLaunchOnboarding._tag, createDefaultProject),
+  checkAppExists: (appName) => invoke(AppCheckAppExists._tag, appName),
+  resolveAppPath: (appName) => invoke(AppResolveAppPath._tag, appName),
+  storeGet: (name, key) => invoke(StorageGet._tag, name, key),
+  storeSet: (name, key, value) => invoke(StorageSet._tag, name, key, value),
+  storeDelete: (name, key) => invoke(StorageDelete._tag, name, key),
+  storeClear: (name) => invoke(StorageClear._tag, name),
+  storeKeys: (name) => invoke(StorageKeys._tag, name),
+  storeLength: (name) => invoke(StorageLength._tag, name),
+  draftGet: (key) => invoke(DraftsGet._tag, key),
+  draftSet: (key, value) => invoke(DraftsSet._tag, key, value),
+  draftDelete: (key) => invoke(DraftsDelete._tag, key),
+  draftBlobPut: (data) => invoke(DraftsPutBlob._tag, data),
+  draftBlobGet: (id) => invoke(DraftsGetBlob._tag, id),
 
-  getWindowID: () => invoke(Ipc.window.getId),
-  onMenuCommand: (cb) => listen(Ipc.menu.command, cb),
-  onDeepLink: (cb) => listen(Ipc.app.deepLink, cb),
+  getWindowID: () => invoke(WindowGetId._tag),
+  onMenuCommand: (cb) => listen(MenuCommand._tag, cb),
+  onDeepLink: (cb) => listen(AppDeepLink._tag, cb),
 
-  openDirectoryPicker: (opts) => invoke(Ipc.files.openDirectoryPicker, opts),
-  openFilePicker: (opts) => invoke(Ipc.files.openFilePicker, opts),
-  readPickedFile: (token, path) => invoke(Ipc.files.readPickedFile, token, path),
-  releasePickedFiles: (token) => invoke(Ipc.files.releasePickedFiles, token),
+  openDirectoryPicker: (opts) => invoke(FilesOpenDirectoryPicker._tag, opts),
+  openFilePicker: (opts) => invoke(FilesOpenFilePicker._tag, opts),
+  readPickedFile: (token, path) => invoke(FilesReadPickedFile._tag, token, path),
+  releasePickedFiles: (token) => invoke(FilesReleasePickedFiles._tag, token),
   getPathForFile: (file) => webUtils.getPathForFile(file),
-  saveFilePicker: (opts) => invoke(Ipc.files.saveFilePicker, opts),
-  openExternal: (url) => send(Ipc.files.openExternal, url),
-  openLocalFile: (url) => send(Ipc.files.openLocalFile, url),
-  openPath: (path, app) => invoke(Ipc.files.openPath, path, app),
-  revealPath: (path) => invoke(Ipc.files.revealPath, path),
-  readClipboardImage: () => invoke(Ipc.files.readClipboardImage),
-  getWindowFocused: () => invoke(Ipc.window.getFocused),
-  getWindowFullscreen: () => invoke(Ipc.window.getFullscreen),
-  onWindowFullscreenChanged: (cb) => listen(Ipc.window.fullscreenChanged, cb),
-  setWindowFocus: () => invoke(Ipc.window.setFocus),
-  showWindow: () => invoke(Ipc.window.show),
-  relaunch: () => send(Ipc.app.relaunch),
-  getZoomFactor: () => invoke(Ipc.window.getZoomFactor),
-  setZoomFactor: (factor) => invoke(Ipc.window.setZoomFactor, factor),
-  getPinchZoomEnabled: () => invoke(Ipc.window.getPinchZoomEnabled),
-  setPinchZoomEnabled: (enabled) => invoke(Ipc.window.setPinchZoomEnabled, enabled),
-  onPinchZoomEnabledChanged: (cb) => listen(Ipc.window.pinchZoomEnabledChanged, cb),
-  onZoomFactorChanged: (cb) => listen(Ipc.window.zoomFactorChanged, cb),
-  setTitlebar: (theme) => invoke(Ipc.window.setTitlebar, theme),
-  runDesktopMenuAction: (action) => invoke(Ipc.menu.runAction, action),
-  setBackgroundColor: (color) => invoke(Ipc.app.setBackgroundColor, color),
-  exportDebugLogs: () => invoke(Ipc.app.exportDebugLogs),
-  setForceFocus: (enabled) => invoke(Ipc.app.setForceFocus, enabled),
-  recordFatalRendererError: (error) => invoke(Ipc.app.recordFatalRendererError, error),
-  setNativeTranslations: (bundle) => invoke(Ipc.app.setNativeTranslations, bundle),
+  saveFilePicker: (opts) => invoke(FilesSaveFilePicker._tag, opts),
+  openExternal: (url) => send(FilesOpenExternal._tag, url),
+  openLocalFile: (url) => send(FilesOpenLocalFile._tag, url),
+  openPath: (path, app) => invoke(FilesOpenPath._tag, path, app),
+  revealPath: (path) => invoke(FilesRevealPath._tag, path),
+  readClipboardImage: () => invoke(FilesReadClipboardImage._tag),
+  getWindowFocused: () => invoke(WindowGetFocused._tag),
+  getWindowFullscreen: () => invoke(WindowGetFullscreen._tag),
+  onWindowFullscreenChanged: (cb) => listen(WindowFullscreenChanged._tag, cb),
+  setWindowFocus: () => invoke(WindowSetFocus._tag),
+  showWindow: () => invoke(WindowShow._tag),
+  relaunch: () => send(AppRelaunch._tag),
+  getZoomFactor: () => invoke(WindowGetZoomFactor._tag),
+  setZoomFactor: (factor) => invoke(WindowSetZoomFactor._tag, factor),
+  getPinchZoomEnabled: () => invoke(WindowGetPinchZoomEnabled._tag),
+  setPinchZoomEnabled: (enabled) => invoke(WindowSetPinchZoomEnabled._tag, enabled),
+  onPinchZoomEnabledChanged: (cb) => listen(WindowPinchZoomEnabledChanged._tag, cb),
+  onZoomFactorChanged: (cb) => listen(WindowZoomFactorChanged._tag, cb),
+  setTitlebar: (theme) => invoke(WindowSetTitlebar._tag, theme),
+  runDesktopMenuAction: (action) => invoke(MenuRunAction._tag, action),
+  setBackgroundColor: (color) => invoke(AppSetBackgroundColor._tag, color),
+  exportDebugLogs: () => invoke(AppExportDebugLogs._tag),
+  setForceFocus: (enabled) => invoke(AppSetForceFocus._tag, enabled),
+  recordFatalRendererError: (error) => invoke(AppRecordFatalRendererError._tag, error),
+  setNativeTranslations: (bundle) => invoke(AppSetNativeTranslations._tag, bundle),
 }
 
 contextBridge.exposeInMainWorld("api", api)
